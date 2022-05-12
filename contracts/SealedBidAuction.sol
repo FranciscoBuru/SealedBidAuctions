@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: MIT
-
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
@@ -23,6 +22,9 @@ contract SealedBidAuction is Ownable, IERC721Receiver {
     IERC721 public parentNFT;
     uint256 public tokenId;
 
+    uint public revealTime;
+    uint public winnerTime;
+
     enum AUCTION_STATE{
         CONTRACT_CREATION,
         RECIVEING_OFFERS,
@@ -33,11 +35,13 @@ contract SealedBidAuction is Ownable, IERC721Receiver {
 
     AUCTION_STATE public auction_state;
 
-    constructor(bytes32 _minimumPriceHash, address _nftContract, uint256 _tokenId) {
+    constructor(bytes32 _minimumPriceHash, address _nftContract, uint256 _tokenId, uint _revealTime, uint _winnerTime) {
         auction_state = AUCTION_STATE.CONTRACT_CREATION;
         minimumPriceHash = _minimumPriceHash;
         parentNFT = IERC721(_nftContract);
         tokenId = _tokenId;
+        revealTime = _revealTime;
+        winnerTime = _winnerTime;
     }
 
     function transferAssetToContract() public onlyOwner{
@@ -47,7 +51,7 @@ contract SealedBidAuction is Ownable, IERC721Receiver {
 
     
     function makeOffer(bytes32 _hash) public virtual payable{
-        require(auction_state == AUCTION_STATE.RECIVEING_OFFERS);
+        require(auction_state == AUCTION_STATE.RECIVEING_OFFERS, 'Wrong auction state');
         require(_msgSender() != owner(), "Owner cant bid");
         require(msg.value > 0, "Need some ETH");
         require(accountToAmount[_msgSender()] == 0, "Cant bid twice"); // New participant.
@@ -59,14 +63,43 @@ contract SealedBidAuction is Ownable, IERC721Receiver {
         accountToHash[_msgSender()] = _hash;
     }
 
-    function closeOffers() public onlyOwner {
-        require(auction_state == AUCTION_STATE.RECIVEING_OFFERS);
+    function closeOffers() public{
+        require(block.timestamp >= revealTime, 'Wait until set time');
+        require(auction_state == AUCTION_STATE.RECIVEING_OFFERS, 'Wrong auction state');
         auction_state = AUCTION_STATE.OFFER_REVEAL;
+    }
+
+    function revealOffer(string memory _secret, uint256 _amount) public virtual{
+    require(auction_state == AUCTION_STATE.OFFER_REVEAL, "Not right time");
+    require(accountToAmount[_msgSender()] != 0, "You are not a participant"); // Participant
+    require(accountToOffer[_msgSender()] == 0, "Can only reveal once"); // No retrys
+    require(_amount <= accountToAmount[_msgSender()], "Offer invalidated"); 
+    require(
+        accountToHash[_msgSender()] == keccak256(
+            abi.encodePacked(
+                _secret,
+                _amount
+            )
+        ), "Hashes do not match"
+    ); // Hash match
+    //event
+    accountToOffer[_msgSender()] = _amount;
+    }
+
+    // ASolo 5 Seg en pruebas, cuando le hagas deploy hazlo con 30min minimo
+    function closeReveals() public{
+        require(block.timestamp >= winnerTime+5, 'Wait until set time'); //5s despues que vence tiempo de owner
+        require(_msgSender() != owner(), "Owner must use winnerCalculation()");
+        require(auction_state == AUCTION_STATE.OFFER_REVEAL, 'wrong auction state');
+        auction_state = AUCTION_STATE.CALCULATING_WINNER;
+        _closeReveals();
     }
 
     // Cambiale el nombre y pega el close reveals a final del metodo. Te mamas 
     function winnerCalculation(string memory _secret, uint256 _amount) public onlyOwner {
-        require(auction_state == AUCTION_STATE.OFFER_REVEAL);
+        require(auction_state == AUCTION_STATE.OFFER_REVEAL, 'Wrong auction state');
+        require(block.timestamp >= winnerTime, 'Wait until set time');
+        // Que el reveal al menos sea de 1 min ??? pon require si acaso
         require(
             minimumPriceHash == keccak256(
                 abi.encodePacked(
@@ -80,44 +113,26 @@ contract SealedBidAuction is Ownable, IERC721Receiver {
         _closeReveals();
     }
 
-    function revealOffer(string memory _secret, uint256 _amount) public virtual{
-        require(auction_state == AUCTION_STATE.OFFER_REVEAL, "Not right time");
-        require(accountToAmount[_msgSender()] != 0, "You are not a participant"); // Participant
-        require(accountToOffer[_msgSender()] == 0, "Can only reveal once"); // No retrys
-        require(_amount <= accountToAmount[_msgSender()], "Offer invalidated"); 
-        require(
-            accountToHash[_msgSender()] == keccak256(
-                abi.encodePacked(
-                    _secret,
-                    _amount
-                )
-            ), "Hashes do not match"
-        ); // Hash match
-        //event
-        accountToOffer[_msgSender()] = _amount;
-    }
-    //Funcion para recibir el precio minimo
-
-    function _closeReveals() internal onlyOwner { //internal
-        // Verifia que el precio minimo este puesto. 
-        require(auction_state == AUCTION_STATE.CALCULATING_WINNER);
-        uint256 indexOfWinner;
-        uint256 loopAmount;
-        uint256 i;
+    function _closeReveals() internal{ //internal
+    // Verifia que el precio minimo este puesto. 
+    uint256 indexOfWinner;
+    uint256 loopAmount;
+    uint256 i;
+    if(players.length > 0){
         for(i = 0; i < players.length; i++){
             if(accountToOffer[players[i]] > loopAmount){
                 indexOfWinner = i;
                 loopAmount = accountToOffer[players[i]];
             }
-    
         }
         if(loopAmount >= minimumPrice){
             winner = players[indexOfWinner];
             amount = accountToOffer[winner];
             // Quito lo ofrecido al que gana
             accountToAmount[winner] = accountToAmount[winner] - accountToOffer[winner];
-        }
-        auction_state = AUCTION_STATE.AUCTION_ENDED;
+        } 
+    }
+    auction_state = AUCTION_STATE.AUCTION_ENDED;
     }
 
     function ownerGetsPayed() public onlyOwner{

@@ -9,10 +9,10 @@ contract AuctionFactory{
     SealedBidAuction[] public sealedBidAuctionArray;
     mapping(address => uint256) auctionAddressToIndexInArray;
 
-    function createSealedBidAuctionContract(bytes32 _minimumPriceHash, address _nftContract, uint256 _tokenId) public returns (uint256){
+    function createSealedBidAuctionContract(bytes32 _minimumPriceHash, address _nftContract, uint256 _tokenId, uint _revealTime, uint _winnerTime) public returns (uint256){
         // Mete el address del nft a subastar
         // TODO
-        SealedBidAuction auction = new SealedBidAuction(_minimumPriceHash, _nftContract, _tokenId);
+        SealedBidAuction auction = new SealedBidAuction(_minimumPriceHash, _nftContract, _tokenId, _revealTime, _winnerTime);
         sealedBidAuctionArray.push(auction);
         auctionAddressToIndexInArray[address(auction)] = sealedBidAuctionArray.length -1;
         auction.transferOwnership(msg.sender);

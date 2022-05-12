@@ -1,9 +1,10 @@
 from brownie import SealedBidAuction, accounts, config, network, exceptions
 from web3 import Web3
-from scripts.helpful_scripts import LOCAL_BLOCKCHAIN_ENVIRONMENTS, get_account, hashStrings
+from scripts.helpful_scripts import LOCAL_BLOCKCHAIN_ENVIRONMENTS, get_account, hashStrings, time_now
 from scripts.deploy_auction import deploy_auction
 from scripts.manage_nft import last_nft
 import pytest
+import time
 
 MIN_PRICE = Web3.toWei(0.1, 'ether')
 SECRET = "thisIsASecret"
@@ -81,14 +82,16 @@ def test_close_bids_by_owner():
     tx.wait(1)
     assert(auction.auction_state() == 2)
 
-def test_close_bids_by_not_owner():
+# El de abajo ya no tiene sentido porque el close depende del 
+# timestamp ahora. 
+'''def test_close_bids_by_not_owner():
     if network.show_active() not in LOCAL_BLOCKCHAIN_ENVIRONMENTS:
         pytest.skip()
     account = get_account(index=1)
     auction, hash = deploy_auction()
     with pytest.raises(exceptions.VirtualMachineError):
         tx = auction.closeOffers({'from':account})
-        tx.wait(1)
+        tx.wait(1)'''
 
 def test_skip_reveal():
     if network.show_active() not in LOCAL_BLOCKCHAIN_ENVIRONMENTS:
@@ -366,6 +369,164 @@ def test_non_winner_retrives_token():
         tx.wait(1)
     assert(collectible.ownerOf(collectible_id) == auction)
 
+
+## Tests con tiempos en cuenta
+
+#Revisa que variables del contrato sean correctas despues del deploy
+def test_right_times_deploy():
+    if network.show_active() not in LOCAL_BLOCKCHAIN_ENVIRONMENTS:
+        pytest.skip()
+    #Arrange
+    time1 = time_now()+5
+    time2 = time1 + 10
+    auction, hash = deploy_auction(MIN_PRICE, SECRET, time1, time2)
+    #Act
+    collectible, collectible_id = last_nft()
+    #Assert
+    assert(auction.auction_state() == 1)
+    assert(collectible.ownerOf(collectible_id) == auction)
+    assert(str(auction.minimumPriceHash()) == hash.hex())
+    assert(auction.owner() == get_account())
+    assert(auction.revealTime() == time1)
+    assert(auction.winnerTime() == time2)
+
+def test_cant_close_offers_on_wrong_time_owner():
+    if network.show_active() not in LOCAL_BLOCKCHAIN_ENVIRONMENTS:
+        pytest.skip()
+    #Arrange
+    account = get_account()
+    time1 = time_now()+50
+    time2 = time1 + 100
+    auction, hash = deploy_auction(MIN_PRICE, SECRET, time1, time2)
+    #Act
+    collectible, collectible_id = last_nft()
+    #Assert
+    with pytest.raises(exceptions.VirtualMachineError):
+        tx = auction.closeOffers({"from": account})
+        tx.wait(1)
+    return account, auction
+
+def test_cant_close_offers_on_wrong_time():
+    if network.show_active() not in LOCAL_BLOCKCHAIN_ENVIRONMENTS:
+        pytest.skip()
+    #Arrange
+    account2 = get_account(index=1)
+    time1 = time_now()+50
+    time2 = time1 + 100
+    auction, hash = deploy_auction(MIN_PRICE, SECRET, time1, time2)
+    #Assert
+    with pytest.raises(exceptions.VirtualMachineError):
+        tx = auction.closeOffers({"from": account2})
+        tx.wait(1)
+    return account2, auction
+
+def test_close_offers_right_time():
+    if network.show_active() not in LOCAL_BLOCKCHAIN_ENVIRONMENTS:
+        pytest.skip()
+    #Arrange
+    account = get_account(index=2)
+    time1 = time_now()
+    time2 = time1 + 10
+    auction, hash = deploy_auction(MIN_PRICE, SECRET, time1, time2)
+    #Act
+    time.sleep(5)
+    #Assert
+    tx = auction.closeOffers({"from": account})
+    tx.wait(1)
+    assert(auction.auction_state() == 2)
+    return account, auction
+
+def test_close_offers_right_time_owner():
+    if network.show_active() not in LOCAL_BLOCKCHAIN_ENVIRONMENTS:
+        pytest.skip()
+    #Arrange
+    account = get_account()
+    time1 = time_now()
+    time2 = time1 + 10
+    auction, hash = deploy_auction(MIN_PRICE, SECRET, time1, time2)
+    #Act
+    time.sleep(5)
+    #Assert
+    tx = auction.closeOffers({"from": account})
+    tx.wait(1)
+    assert(auction.auction_state() == 2)
+    return account, auction
+
+#cambia
+def test_close_reveals_wrong_time():
+    if network.show_active() not in LOCAL_BLOCKCHAIN_ENVIRONMENTS:
+        pytest.skip()
+    account, auction = test_close_offers_right_time()
+    with pytest.raises(exceptions.VirtualMachineError):
+        tx = auction.closeReveals({"from": account})
+        tx.wait(1)
+
+#cambia
+def test_close_reveals_wrong_time_owner():
+    if network.show_active() not in LOCAL_BLOCKCHAIN_ENVIRONMENTS:
+        pytest.skip()
+    account, auction = test_close_offers_right_time_owner()
+    with pytest.raises(exceptions.VirtualMachineError):
+        tx = auction.winnerCalculation(SECRET, MIN_PRICE, {"from": account})
+        tx.wait(1)
+
+def test_close_reveals_wrong_method():
+    if network.show_active() not in LOCAL_BLOCKCHAIN_ENVIRONMENTS:
+        pytest.skip()
+    account, auction = test_close_offers_right_time()
+    time.sleep(5)
+    with pytest.raises(exceptions.VirtualMachineError):
+        tx = auction.winnerCalculation(SECRET, MIN_PRICE, {"from": account})
+        tx.wait(1)
+
+# cambia
+def test_close_reveals_wrong_method_owner():
+    if network.show_active() not in LOCAL_BLOCKCHAIN_ENVIRONMENTS:
+        pytest.skip()
+    account, auction = test_close_offers_right_time()
+    #Act
+    time.sleep(5)
+    with pytest.raises(exceptions.VirtualMachineError):
+        tx = auction.closeReveals({"from": account})
+        tx.wait(1)
+
+#Me salvo para poner if dentro de _closeReveals
+#Diff
+def test_close_reveals_right_time_and_method():
+    if network.show_active() not in LOCAL_BLOCKCHAIN_ENVIRONMENTS:
+        pytest.skip()
+    account, auction = test_close_offers_right_time()
+    time.sleep(10)
+    tx = auction.closeReveals({"from": account})
+    tx.wait(1)
+    assert(auction.auction_state() == 4)
+
+def test_close_reveals_right_time_and_method_with_diffrence():
+    if network.show_active() not in LOCAL_BLOCKCHAIN_ENVIRONMENTS:
+        pytest.skip()
+    account, auction = test_close_offers_right_time()
+    time.sleep(1)
+    with pytest.raises(exceptions.VirtualMachineError):
+        tx = auction.closeReveals({"from": account})
+        tx.wait(1)
+
+
+def test_close_reveals_right_time_and_method_owner():
+    if network.show_active() not in LOCAL_BLOCKCHAIN_ENVIRONMENTS:
+        pytest.skip()
+    account, auction = test_close_offers_right_time_owner()
+    time.sleep(5)
+    tx = auction.winnerCalculation(SECRET, MIN_PRICE, {"from": account})
+    tx.wait(1)
+    assert(auction.auction_state() == 4)
+
+def test_close_reveals_right_time_and_method_with_diffrence_owner():
+    if network.show_active() not in LOCAL_BLOCKCHAIN_ENVIRONMENTS:
+        pytest.skip()
+    account, auction = test_close_offers_right_time_owner()
+    with pytest.raises(exceptions.VirtualMachineError):
+        tx = auction.winnerCalculation(SECRET, MIN_PRICE, {"from": account})
+        tx.wait(1)
 
 
 
