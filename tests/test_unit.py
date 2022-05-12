@@ -452,7 +452,6 @@ def test_close_offers_right_time_owner():
     assert(auction.auction_state() == 2)
     return account, auction
 
-#cambia
 def test_close_reveals_wrong_time():
     if network.show_active() not in LOCAL_BLOCKCHAIN_ENVIRONMENTS:
         pytest.skip()
@@ -461,7 +460,6 @@ def test_close_reveals_wrong_time():
         tx = auction.closeReveals({"from": account})
         tx.wait(1)
 
-#cambia
 def test_close_reveals_wrong_time_owner():
     if network.show_active() not in LOCAL_BLOCKCHAIN_ENVIRONMENTS:
         pytest.skip()
@@ -479,7 +477,6 @@ def test_close_reveals_wrong_method():
         tx = auction.winnerCalculation(SECRET, MIN_PRICE, {"from": account})
         tx.wait(1)
 
-# cambia
 def test_close_reveals_wrong_method_owner():
     if network.show_active() not in LOCAL_BLOCKCHAIN_ENVIRONMENTS:
         pytest.skip()
