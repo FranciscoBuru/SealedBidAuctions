@@ -8,6 +8,7 @@ import time
 
 MIN_PRICE = Web3.toWei(0.1, 'ether')
 SECRET = "thisIsASecret"
+ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
 
 def test_deploy():
     if network.show_active() not in LOCAL_BLOCKCHAIN_ENVIRONMENTS:
@@ -525,6 +526,95 @@ def test_close_reveals_right_time_and_method_with_diffrence_owner():
         tx = auction.winnerCalculation(SECRET, MIN_PRICE, {"from": account})
         tx.wait(1)
 
+def test_winner_with_colse_by_owner():
+    if network.show_active() not in LOCAL_BLOCKCHAIN_ENVIRONMENTS:
+        pytest.skip()
+    account1 = get_account()
+    account2 = get_account(index=1)
+    time1 = time_now()
+    time2 = time1 + 10
+    auction, hash = deploy_auction(MIN_PRICE, SECRET, time1, time2)
+    secrets = ["S1", "S2"]
+    prices = [Web3.toWei(0.1, 'ether'), Web3.toWei(0.1, 'ether')]
+    tx = auction.makeOffer(hashStrings(secrets[0], prices[0]), {'from': account2, 'value':  Web3.toWei(0.1, 'ether')})
+    tx.wait(1)
+    tx = auction.closeOffers({"from": account2})
+    tx.wait(1)
+    tx = auction.revealOffer(secrets[0], prices[0], {'from':account2})
+    tx.wait(1)
+    time.sleep(10)
+    tx = auction.winnerCalculation(SECRET, MIN_PRICE, {"from": account1})
+    tx.wait(1)
+    assert(auction.winner() == account2)
+    assert(auction.amount() == MIN_PRICE)
+    assert(auction.minimumPrice() != 0)
 
+def test_winner_with_colse_by_x():
+    if network.show_active() not in LOCAL_BLOCKCHAIN_ENVIRONMENTS:
+        pytest.skip()
+    account1 = get_account()
+    account2 = get_account(index=1)
+    time1 = time_now()
+    time2 = time1 + 10
+    auction, hash = deploy_auction(MIN_PRICE, SECRET, time1, time2)
+    secrets = ["S1", "S2"]
+    prices = [Web3.toWei(0.1, 'ether'), Web3.toWei(0.1, 'ether')]
+    tx = auction.makeOffer(hashStrings(secrets[0], prices[0]), {'from': account2, 'value':  Web3.toWei(0.1, 'ether')})
+    tx.wait(1)
+    tx = auction.closeOffers({"from": account2})
+    tx.wait(1)
+    tx = auction.revealOffer(secrets[0], prices[0], {'from':account2})
+    tx.wait(1)
+    time.sleep(15)
+    tx = auction.closeReveals({"from": account2})
+    tx.wait(1)
+    assert(auction.winner() == account2)
+    assert(auction.amount() == MIN_PRICE)
+    assert(auction.minimumPrice() == 0)
 
+def test_winner_with_colse_by_owner_bad_min_price():
+    if network.show_active() not in LOCAL_BLOCKCHAIN_ENVIRONMENTS:
+        pytest.skip()
+    account1 = get_account()
+    account2 = get_account(index=1)
+    time1 = time_now()
+    time2 = time1 + 10
+    auction, hash = deploy_auction(MIN_PRICE, SECRET, time1, time2)
+    secrets = ["S1", "S2"]
+    prices = [Web3.toWei(0.09, 'ether'), Web3.toWei(0.09, 'ether')]
+    tx = auction.makeOffer(hashStrings(secrets[0], prices[0]), {'from': account2, 'value':  Web3.toWei(0.3, 'ether')})
+    tx.wait(1)
+    tx = auction.closeOffers({"from": account2})
+    tx.wait(1)
+    tx = auction.revealOffer(secrets[0], prices[0], {'from':account2})
+    tx.wait(1)
+    time.sleep(10)
+    tx = auction.winnerCalculation(SECRET, MIN_PRICE, {"from": account1})
+    tx.wait(1)
+    assert(auction.winner() == ZERO_ADDRESS)
+    assert(auction.amount() == 0)
+    assert(auction.minimumPrice() != 0)
+
+def test_winner_with_colse_by_x_bad_min_price():
+    if network.show_active() not in LOCAL_BLOCKCHAIN_ENVIRONMENTS:
+        pytest.skip()
+    account1 = get_account()
+    account2 = get_account(index=1)
+    time1 = time_now()
+    time2 = time1 + 10
+    auction, hash = deploy_auction(MIN_PRICE, SECRET, time1, time2)
+    secrets = ["S1", "S2"]
+    prices = [Web3.toWei(0.09, 'ether'), Web3.toWei(0.09, 'ether')]
+    tx = auction.makeOffer(hashStrings(secrets[0], prices[0]), {'from': account2, 'value':  Web3.toWei(0.2, 'ether')})
+    tx.wait(1)
+    tx = auction.closeOffers({"from": account2})
+    tx.wait(1)
+    tx = auction.revealOffer(secrets[0], prices[0], {'from':account2})
+    tx.wait(1)
+    time.sleep(15)
+    tx = auction.closeReveals({"from": account2})
+    tx.wait(1)
+    assert(auction.winner() == account2)
+    assert(auction.amount() == prices[0])
+    assert(auction.minimumPrice() == 0)
 
